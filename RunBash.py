@@ -34,14 +34,19 @@ log = []
 ## for debug
 #bytelog = []
 debug = []
+pops = []
 #binary = []
 prechars = []
 chars = []
 regex = []
-regex.append(re.compile(b"\x1b.*\x07"))
+regex.append(re.compile(rb"\x1b.*\x07"))
 regex.append(re.compile(rb"\x08+\x1b\x5b\x31\x34\x50"))
-hist = re.compile(b"(\x08\x08\x08\x08)+")
-#bsw = re.compile(b"\x1b\x5b\x4b")
+regex.append(re.compile(rb"\x08(\x08)+"))
+regex.append(re.compile(rb"(\x1b\x5b\x43)+"))
+regex.append(re.compile(rb"\x1b\x5b([0-9A-Fa-f]+\x3b)+[0-9A-Fa-f]+\x6d"))
+regex.append(re.compile(rb"\x1b\x5b[0-9A-Fa-f]+\x50"))
+hist = re.compile(rb"\x08(\x08)+")
+histback = re.compile(rb"\x0d(\x1b\x5b\x43)+")
 log.append("[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] ")
 def ChkChar(s):
     flag = True
@@ -50,7 +55,14 @@ def ChkChar(s):
         if(ord_num <= 31):
             flag = False
     return flag
-    
+
+def DelCtlCode(output):
+    o = output
+    for b in (b"\x1b\x5b\x31\x41\x1b\x5b\x31\x4b\x1b\x5b\x4b\x0d",b"\x1b\x5b\x31\x42",b"\x1b\x5b\x3f\x31\x30\x33\x34\x68",b"\x1b\x5b\x4b",b"\x1b\x5b\x30\x6d",b"\x1b\x5b\x39\x31\x6d"):
+        o = o.replace(b,b"")
+    for reg in regex:
+        o = re.sub(reg,b"",o)
+    return o
 
 while p.poll() is None:
     r, w, e = select.select([sys.stdin, master_fd], [], [])
@@ -68,16 +80,22 @@ while p.poll() is None:
                 log.append(outputstr)
                 continue
             debug.append("".join(prechars))
+            if not re.search(hist,o) == None:
+                log.pop()
+                o = re.sub(hist,b"",o)
+                o = DelCtlCode(o)
+                log.append(o.decode('utf-8'))
+                continue
+            if not re.search(histback,o) ==None:
+                log.pop()
+                o = re.sub(histback,b"",o)
+                o = DelCtlCode(o)
+                log.append(o.decode('utf-8'))
+                continue
             if o == b'\x08\x1b\x5b\x4b':
                 log.pop()
                 continue
-            for b in (b"\x1b\x5b\x31\x41\x1b\x5b\x31\x4b\x1b\x5b\x4b",b"\x1b\x5b\x31\x42"):
-                o = o.replace(b,b"")
-            for reg in regex:
-                o = re.sub(reg,b"",o)
-            if re.search(hist,o):
-                log.pop()
-                o = re.sub(hist,b"",o)
+            o = DelCtlCode(o)
             chars = list(o.decode('utf-8'))
             for c in chars:
                 ord_num = ord(c)
@@ -89,7 +107,6 @@ while p.poll() is None:
                     log.append(c)
 
 with open(path,mode='w') as f:
-    #f.write(re.sub(r'\[\?1034h|\]0;.*\?1034h|\]0;.*:~|\[0m|\[(\d+;)+\d+m',"","".join(log)))
     f.write("".join(log))
 ## for debug
 with open("/Users/tak/work/logs/debug.txt",mode='w') as d:
