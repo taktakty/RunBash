@@ -11,7 +11,28 @@ import re
 import datetime
 import binascii
 from subprocess import Popen
+from argparse import ArgumentParser
 
+def get_option():
+    argparser = ArgumentParser()
+    argparser.add_argument('-t', '--timestamp', action='store_true',
+                           help='Adding timestamp to head of each line.')
+    argparser.add_argument('-f', '--filename', type=str,
+                           help='Specify name of logfile.')
+    return argparser.parse_args()
+
+args = get_option()
+
+cdir = os.path.dirname(os.path.abspath(__file__))
+logdir = os.path.join(cdir,"./logs/")
+if not os.path.isdir(logdir) == True:
+    os.makedirs(logdir)
+now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+if args.filename:
+    logname = args.filename
+else:
+    logname = "bash.txt"
+path = os.path.join(logdir,now + "_" + logname)
 command = 'bash'
 # command = 'docker run -it --rm centos /bin/bash'.split()
 
@@ -29,15 +50,21 @@ p = Popen(command,
           stdout=slave_fd,
           stderr=slave_fd,
           universal_newlines=True)
-path = '/Users/tak/work/logs/' + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "_TeamKujira.txt"
 log = []
-## for debug
-#bytelog = []
+if args.timestamp == True:
+    log.append("[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] ")
 debug = []
 pops = []
-#binary = []
 prechars = []
 chars = []
+reps = [
+    b"\x1b\x5b\x31\x41\x1b\x5b\x31\x4b\x1b\x5b\x4b\x0d",
+    b"\x1b\x5b\x31\x42",
+    b"\x1b\x5b\x3f\x31\x30\x33\x34\x68",
+    b"\x1b\x5b\x4b",
+    b"\x1b\x5b\x30\x6d",
+    b"\x1b\x5b\x39\x31\x6d"
+]
 regex = []
 regex.append(re.compile(rb"\x1b.*\x07"))
 regex.append(re.compile(rb"\x08+\x1b\x5b\x31\x34\x50"))
@@ -47,7 +74,6 @@ regex.append(re.compile(rb"\x1b\x5b([0-9A-Fa-f]+\x3b)+[0-9A-Fa-f]+\x6d"))
 regex.append(re.compile(rb"\x1b\x5b[0-9A-Fa-f]+\x50"))
 hist = re.compile(rb"\x08(\x08)+")
 histback = re.compile(rb"\x0d(\x1b\x5b\x43)+")
-log.append("[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] ")
 def ChkChar(s):
     flag = True
     for c in s:
@@ -58,58 +84,64 @@ def ChkChar(s):
 
 def DelCtlCode(output):
     o = output
-    for b in (b"\x1b\x5b\x31\x41\x1b\x5b\x31\x4b\x1b\x5b\x4b\x0d",b"\x1b\x5b\x31\x42",b"\x1b\x5b\x3f\x31\x30\x33\x34\x68",b"\x1b\x5b\x4b",b"\x1b\x5b\x30\x6d",b"\x1b\x5b\x39\x31\x6d"):
+    for b in reps:
         o = o.replace(b,b"")
     for reg in regex:
         o = re.sub(reg,b"",o)
     return o
 
-while p.poll() is None:
-    r, w, e = select.select([sys.stdin, master_fd], [], [])
-    if sys.stdin in r:
-        d = os.read(sys.stdin.fileno(), 10240)
-        os.write(master_fd, d)
-    elif master_fd in r:
-        o = os.read(master_fd, 10240)
-        if o:
-            os.write(sys.stdout.fileno(), o)
-            debug.append(str(binascii.hexlify(o), 'utf-8'))
-            outputstr = (o.decode('utf-8'))
-            prechars = list(outputstr)
-            if ChkChar(outputstr) == True:
-                log.append(outputstr)
-                continue
-            debug.append("".join(prechars))
-            if not re.search(hist,o) == None:
-                log.pop()
-                o = re.sub(hist,b"",o)
+with open(logdir + "raw.txt",mode='w') as raw:
+    while p.poll() is None:
+        r, w, e = select.select([sys.stdin, master_fd], [], [])
+        if sys.stdin in r:
+            d = os.read(sys.stdin.fileno(),10000000)
+            os.write(master_fd, d)
+        elif master_fd in r:
+            o = os.read(master_fd,10000000)
+            if o:
+                os.write(sys.stdout.fileno(), o)
+                debug.append(str(binascii.hexlify(o), 'utf-8'))
+                outputstr = (o.decode('utf-8'))
+                raw.write(outputstr)
+                prechars = list(outputstr)
+                if ChkChar(outputstr) == True:
+                    log.append(outputstr)
+                    continue
+                debug.append("".join(prechars))
+                if not re.search(hist,o) == None:
+                    log.pop()
+                    o = re.sub(hist,b"",o)
+                    o = DelCtlCode(o)
+                    log.append(o.decode('utf-8'))
+                    continue
+                if not re.search(histback,o) ==None:
+                    log.pop()
+                    o = re.sub(histback,b"",o)
+                    o = DelCtlCode(o)
+                    log.append(o.decode('utf-8'))
+                    continue
+                if o == b'\x08\x1b\x5b\x4b':
+                    log.pop()
+                    continue
                 o = DelCtlCode(o)
-                log.append(o.decode('utf-8'))
-                continue
-            if not re.search(histback,o) ==None:
-                log.pop()
-                o = re.sub(histback,b"",o)
-                o = DelCtlCode(o)
-                log.append(o.decode('utf-8'))
-                continue
-            if o == b'\x08\x1b\x5b\x4b':
-                log.pop()
-                continue
-            o = DelCtlCode(o)
-            chars = list(o.decode('utf-8'))
-            for c in chars:
-                ord_num = ord(c)
-                if  ord_num == 13:
-                    log.append("\n[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] ")
-                elif ord_num <= 31:
-                    pass
-                else:
-                    log.append(c)
+                chars = list(o.decode('utf-8'))
+                for c in chars:
+                    ord_num = ord(c)
+                    if  ord_num == 13:
+                        if args.timestamp == True:
+                            log.append("\n[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] ")
+                        else:
+                            log.append("\n")
+                    elif ord_num <= 31:
+                        pass
+                    else:
+                        log.append(c)
 
 with open(path,mode='w') as f:
-    f.write("".join(log))
+    f.write(re.sub(r'\[(\d+;)+\d+m',"","".join(log)))
+    #f.write("".join(log))
 ## for debug
-with open("/Users/tak/work/logs/debug.txt",mode='w') as d:
+with open(logdir + "debug.txt",mode='w') as d:
     d.write("\n".join(debug))
 #with open("/Users/tak/work/logs/binary.txt",mode='w') as b:
 #    b.write("\n".join(binary))
