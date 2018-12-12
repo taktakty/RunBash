@@ -35,7 +35,6 @@ else:
 path = os.path.join(logdir,now + "_" + logname)
 command = 'bash'
 # command = 'docker run -it --rm centos /bin/bash'.split()
-
 # save original tty setting then set it to raw mode
 old_tty = termios.tcgetattr(sys.stdin)
 tty.setraw(sys.stdin.fileno())
@@ -51,8 +50,11 @@ p = Popen(command,
           stderr=slave_fd,
           universal_newlines=True)
 log = []
+blog = []
 if args.timestamp == True:
-    log.append("[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] ")
+    now = "[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] "
+    log.append(now)
+    blog.append(now.encode("utf-8"))
 debug = []
 pops = []
 prechars = []
@@ -67,11 +69,10 @@ reps = [
 ]
 regex = []
 regex.append(re.compile(rb"\x1b.*\x07"))
-regex.append(re.compile(rb"\x08+\x1b\x5b\x31\x34\x50"))
-regex.append(re.compile(rb"\x08(\x08)+"))
-regex.append(re.compile(rb"(\x1b\x5b\x43)+"))
-regex.append(re.compile(rb"\x1b\x5b([0-9A-Fa-f]+\x3b)+[0-9A-Fa-f]+\x6d"))
-regex.append(re.compile(rb"\x1b\x5b[0-9A-Fa-f]+\x50"))
+#regex.append(re.compile(rb"\x08+\x1b\x5b\x31\x34\x50"))
+#regex.append(re.compile(rb"(\x1b\x5b\x43)+"))
+#regex.append(re.compile(rb"\x1b\x5b([0-9A-Fa-f]+\x3b)+[0-9A-Fa-f]+\x6d"))
+#regex.append(re.compile(rb"\x1b\x5b[0-9A-Fa-f]+\x50"))
 hist = re.compile(rb"\x08(\x08)+")
 histback = re.compile(rb"\x0d(\x1b\x5b\x43)+")
 def ChkChar(s):
@@ -84,8 +85,8 @@ def ChkChar(s):
 
 def DelCtlCode(output):
     o = output
-    for b in reps:
-        o = o.replace(b,b"")
+    #for b in reps:
+    #    o = o.replace(b,b"")
     for reg in regex:
         o = re.sub(reg,b"",o)
     return o
@@ -110,19 +111,30 @@ with open(logdir + "raw.txt",mode='w') as raw:
                 debug.append("".join(prechars))
                 if not re.search(hist,o) == None:
                     log.pop()
+                    #blog.pop()
                     o = re.sub(hist,b"",o)
+                    blog.append(o)
                     o = DelCtlCode(o)
                     log.append(o.decode('utf-8'))
                     continue
                 if not re.search(histback,o) ==None:
                     log.pop()
+                    #blog.pop()
                     o = re.sub(histback,b"",o)
+                    blog.append(o)
                     o = DelCtlCode(o)
                     log.append(o.decode('utf-8'))
                     continue
                 if o == b'\x08\x1b\x5b\x4b':
                     log.pop()
                     continue
+                if args.timestamp == True:
+                    now = "[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] "
+                    o = o.replace(b"\x0d\x0a",b"\x0a" + now.encode("utf-8"))
+                else:
+                    o = o.replace(b"\x0d\x0a",b"\x0a")
+                o = o.replace(b"\x0d",b"\x0a")
+                blog.append(o)
                 o = DelCtlCode(o)
                 chars = list(o.decode('utf-8'))
                 for c in chars:
@@ -137,6 +149,13 @@ with open(logdir + "raw.txt",mode='w') as raw:
                     else:
                         log.append(c)
 
+ansi_escape = re.compile(rb'\x1B\[[0-?]*[ -/]*[@-~]')
+blogtxt = b"".join(blog)
+blogtxt = DelCtlCode(blogtxt)
+blogtxt = re.sub(ansi_escape,b"",blogtxt)
+strblog = blogtxt.decode("utf-8")
+with open(logdir + "blog.txt",mode='w') as b:
+    b.write(strblog)
 with open(path,mode='w') as f:
     f.write(re.sub(r'\[(\d+;)+\d+m',"","".join(log)))
     #f.write("".join(log))
