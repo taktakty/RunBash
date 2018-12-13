@@ -78,9 +78,10 @@ pops = []
 prechars = []
 chars = []
 regpattern = [
-    rb"\x1b.*\x07", #Bell when prompt displayed
+    rb"\x1b[^\x07]*\x07", #Bell when prompt displayed
     rb"\x08+\x1b\x5b\x31\x34\x50",  #continuous BS
     rb"\x1B\[[0-?]*[ -/]*[@-~]", #ansi_escape
+    rb"\x08*", #history BS
 ]
 regex = []
 for reg in regpattern:
@@ -114,7 +115,7 @@ def DelCtlCode(output):
     return o
 
 def Chktail(tail):
-    if not re.match(rb"\x1b",tail):
+    if not re.match(regex[0],tail) or not re.match(reps[0],tail):
         return True
     else:
         return False
@@ -143,6 +144,7 @@ with open(logdir + "raw.txt",mode='w') as raw:
                         lastkey = blog.pop()
                         debug.append("before last key:" + lastkey.decode("utf-8"))
                         num = o.count(b"\x08") * -1
+                        DelCtlCode(lastkey)
                         lastkey = lastkey.decode("utf-8")[:num]
                         debug.append("after last key:" + lastkey)
                         blog.append(lastkey.encode("utf-8"))
