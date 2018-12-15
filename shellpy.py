@@ -86,6 +86,7 @@ regpattern = [
     rb"\x08+\x1b\x5b\x31\x34\x50",  #continuous BS
     rb"(\x9b|\x1B\[)[0-?]*[ -/]*[@-~]", #ansi_escape
     rb"\x08*", #history BS
+    b"\x1b(\x3d|\x3e)"
 ]
 regex = []
 reps = [
@@ -151,6 +152,10 @@ with open(logdir + "raw.txt",mode='w') as raw:
                 prechars = list(outputstr)
                 debug.append("".join(prechars))
                 if not re.search(hist[0],o) == None:
+                    if o == b'\x08\x1b\x5b\x4b':
+                        if len(blog[-1]) == 1:
+                            blog.pop()
+                            continue
                     if Chktail(blog[-1]) == True:
                         lastkey = blog.pop()
                         debug.append("before last key:" + lastkey.decode("utf-8"))
@@ -170,10 +175,6 @@ with open(logdir + "raw.txt",mode='w') as raw:
                     o = re.sub(histback,b"",o)
                     blog.append(o)
                     continue
-                if o == b'\x08\x1b\x5b\x4b':
-                    if len(blog[-1]) == 1:
-                        blog.pop()
-                        continue
                 if args.timestamp == True:
                     now = "[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] "
                     o = o.replace(b"\x0d\x0a",b"\x0a" + now.encode("utf-8"))
