@@ -13,28 +13,46 @@ import binascii
 from subprocess import Popen
 from argparse import ArgumentParser
 
-def get_option():
+def EnOption():
     argparser = ArgumentParser()
     argparser.add_argument('-t', '--timestamp', action='store_true',
                            help='Adding timestamp to head of each line.')
     argparser.add_argument('-f', '--filename', type=str,
                            help='Specify name of logfile.')
+    argparser.add_argument('-s', '--shell', type=str,
+                           help='Specify a shell you want to run./n(Default is bash).')
     return argparser.parse_args()
 
-args = get_option()
+args = EnOption()
 
-cdir = os.path.dirname(os.path.abspath(__file__))
-logdir = os.path.join(cdir,"./logs/")
-if not os.path.isdir(logdir) == True:
-    os.makedirs(logdir)
-now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-if args.filename:
-    logname = args.filename
-else:
-    logname = "bash.txt"
-path = os.path.join(logdir,now + "_" + logname)
-command = 'bash'
-# command = 'docker run -it --rm centos /bin/bash'.split()
+def MkLogdir():
+    cdir = os.path.dirname(os.path.abspath(__file__))
+    logdir = os.path.join(cdir,"./logs/")
+    if not os.path.isdir(logdir) == True:
+        os.makedirs(logdir)
+    return logdir
+
+logdir = MkLogdir()
+
+def SetFilepath(filename=None):
+    now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if not filename == None:
+        logname = filename
+    else:
+        logname = "bash.txt"
+    return os.path.join(logdir,now + "_" + logname)
+
+path = SetFilepath(args.filename)
+
+def SelectShell(shell):
+    if not shell == None:
+        command = shell
+    else:
+        command = "bash"
+    return command
+
+command = SelectShell(args.shell)
+
 # save original tty setting then set it to raw mode
 old_tty = termios.tcgetattr(sys.stdin)
 tty.setraw(sys.stdin.fileno())
@@ -59,21 +77,31 @@ debug = []
 pops = []
 prechars = []
 chars = []
+regpattern = [
+    rb"\x1b\x5d[^(\x07)]*\x07", #Bell when prompt displayed
+    rb"\x08+\x1b\x5b\x31\x34\x50",  #continuous BS
+    #rb"\x1B\[[0-?]*[ -/]*[@-~]", #ansi_escape
+    rb"(\x9b|\x1B\[)[0-?]*[ -/]*[@-~]", #ansi_escape
+    rb"\x08*", #history BS
+]
+regex = []
+for reg in regpattern:
+    regex.append(re.compile(reg))
 reps = [
+    b"\x1b\x5b\x3f\x31\x30\x33\x34\x68",    #[?1034h
     b"\x1b\x5b\x31\x41\x1b\x5b\x31\x4b\x1b\x5b\x4b\x0d",
     b"\x1b\x5b\x31\x42",
-    b"\x1b\x5b\x3f\x31\x30\x33\x34\x68",
     b"\x1b\x5b\x4b",
     b"\x1b\x5b\x30\x6d",
     b"\x1b\x5b\x39\x31\x6d"
 ]
-regex = []
-regex.append(re.compile(rb"\x1b.*\x07"))
-#regex.append(re.compile(rb"\x08+\x1b\x5b\x31\x34\x50"))
-#regex.append(re.compile(rb"(\x1b\x5b\x43)+"))
 #regex.append(re.compile(rb"\x1b\x5b([0-9A-Fa-f]+\x3b)+[0-9A-Fa-f]+\x6d"))
 #regex.append(re.compile(rb"\x1b\x5b[0-9A-Fa-f]+\x50"))
-hist = re.compile(rb"\x08(\x08)+")
+hist = [
+    re.compile(rb"(\x08)+"),
+    re.compile(rb"\x1b\x5b\x4b"),
+    re.compile(rb"\x1b\x5b(\x30|\x31|\x32|\x33|\x34|\x35|\x36|\x37|\x38|\x39)*\x50"),
+]
 histback = re.compile(rb"\x0d(\x1b\x5b\x43)+")
 def ChkChar(s):
     flag = True
@@ -85,11 +113,17 @@ def ChkChar(s):
 
 def DelCtlCode(output):
     o = output
-    #for b in reps:
-    #    o = o.replace(b,b"")
     for reg in regex:
         o = re.sub(reg,b"",o)
+    for b in reps:
+        o = o.replace(b,b"")
     return o
+
+def Chktail(tail):
+    if not re.match(regex[0],tail) or not re.match(reps[0],tail):
+        return True
+    else:
+        return False
 
 with open(logdir + "raw.txt",mode='w') as raw:
     while p.poll() is None:
@@ -101,28 +135,39 @@ with open(logdir + "raw.txt",mode='w') as raw:
             o = os.read(master_fd,10000000)
             if o:
                 os.write(sys.stdout.fileno(), o)
+                if o == b"x\07":
+                    continue
                 debug.append(str(binascii.hexlify(o), 'utf-8'))
                 outputstr = (o.decode('utf-8'))
                 raw.write(outputstr)
                 prechars = list(outputstr)
-                if ChkChar(outputstr) == True:
-                    log.append(outputstr)
-                    continue
+                #if ChkChar(outputstr) == True:
+                #    log.append(outputstr)
+                #    continue
                 debug.append("".join(prechars))
-                if not re.search(hist,o) == None:
+                if not re.search(hist[0],o) == None:
                     log.pop()
-                    #blog.pop()
-                    o = re.sub(hist,b"",o)
+                    if Chktail(blog[-1]) == True:
+                        lastkey = blog.pop()
+                        debug.append("before last key:" + lastkey.decode("utf-8"))
+                        num = o.count(b"\x08") * -1
+                        DelCtlCode(lastkey)
+                        lastkey = lastkey.decode("utf-8")[:num]
+                        debug.append("after last key:" + lastkey)
+                        #blog.append(lastkey.encode("utf-8"))
+                        o = lastkey.encode("utf-8") + o
+                        debug.append("after o:" + o.decode("utf-8"))
+                    for h in hist:
+                        o = re.sub(h,b"",o)
                     blog.append(o)
-                    o = DelCtlCode(o)
                     log.append(o.decode('utf-8'))
                     continue
                 if not re.search(histback,o) ==None:
                     log.pop()
-                    #blog.pop()
+                    if Chktail(blog[-1]) == True:
+                        blog.pop()
                     o = re.sub(histback,b"",o)
                     blog.append(o)
-                    o = DelCtlCode(o)
                     log.append(o.decode('utf-8'))
                     continue
                 if o == b'\x08\x1b\x5b\x4b':
@@ -149,10 +194,8 @@ with open(logdir + "raw.txt",mode='w') as raw:
                     else:
                         log.append(c)
 
-ansi_escape = re.compile(rb'\x1B\[[0-?]*[ -/]*[@-~]')
 blogtxt = b"".join(blog)
 blogtxt = DelCtlCode(blogtxt)
-blogtxt = re.sub(ansi_escape,b"",blogtxt)
 strblog = blogtxt.decode("utf-8")
 with open(logdir + "blog.txt",mode='w') as b:
     b.write(strblog)
