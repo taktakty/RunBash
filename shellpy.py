@@ -115,6 +115,7 @@ hist = [
 histback = re.compile(rb"\x0d(\x1b\x5b\x43)+")
 crlf = re.compile(rb"\x0d\x0a")
 hlf = re.compile(rb"^(\x0d|\x0a)")
+sig = re.compile(rb".\x20\x0d")
 ## MainProccess
 args = EnOption()
 logdir = MkLogdir()
@@ -158,7 +159,8 @@ with open(logdir + "raw.txt",mode='w') as raw:
         elif master_fd in r:
             o = os.read(master_fd,10000000)
             if o:
-                o = DelDispValue(o)
+                if re.match(sig,o):
+                    o = DelDispValue(o)
                 os.write(sys.stdout.fileno(), o)
                 if o == b"\x07":
                     continue
