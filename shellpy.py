@@ -78,9 +78,10 @@ pops = []
 prechars = []
 chars = []
 regpattern = [
-    rb"\x1b[^\x07]*\x07", #Bell when prompt displayed
+    rb"\x1b\x5d[^(\x07)]*\x07", #Bell when prompt displayed
     rb"\x08+\x1b\x5b\x31\x34\x50",  #continuous BS
-    rb"\x1B\[[0-?]*[ -/]*[@-~]", #ansi_escape
+    #rb"\x1B\[[0-?]*[ -/]*[@-~]", #ansi_escape
+    rb"(\x9b|\x1B\[)[0-?]*[ -/]*[@-~]", #ansi_escape
     rb"\x08*", #history BS
 ]
 regex = []
@@ -96,7 +97,11 @@ reps = [
 ]
 #regex.append(re.compile(rb"\x1b\x5b([0-9A-Fa-f]+\x3b)+[0-9A-Fa-f]+\x6d"))
 #regex.append(re.compile(rb"\x1b\x5b[0-9A-Fa-f]+\x50"))
-hist = re.compile(rb"\x08(\x08)+")
+hist = [
+    re.compile(rb"(\x08)+"),
+    re.compile(rb"\x1b\x5b\x4b"),
+    re.compile(rb"\x1b\x5b(\x30|\x31|\x32|\x33|\x34|\x35|\x36|\x37|\x38|\x39)*\x50"),
+]
 histback = re.compile(rb"\x0d(\x1b\x5b\x43)+")
 def ChkChar(s):
     flag = True
@@ -130,6 +135,8 @@ with open(logdir + "raw.txt",mode='w') as raw:
             o = os.read(master_fd,10000000)
             if o:
                 os.write(sys.stdout.fileno(), o)
+                if o == b"x\07":
+                    continue
                 debug.append(str(binascii.hexlify(o), 'utf-8'))
                 outputstr = (o.decode('utf-8'))
                 raw.write(outputstr)
@@ -138,7 +145,7 @@ with open(logdir + "raw.txt",mode='w') as raw:
                 #    log.append(outputstr)
                 #    continue
                 debug.append("".join(prechars))
-                if not re.search(hist,o) == None:
+                if not re.search(hist[0],o) == None:
                     log.pop()
                     if Chktail(blog[-1]) == True:
                         lastkey = blog.pop()
@@ -147,8 +154,11 @@ with open(logdir + "raw.txt",mode='w') as raw:
                         DelCtlCode(lastkey)
                         lastkey = lastkey.decode("utf-8")[:num]
                         debug.append("after last key:" + lastkey)
-                        blog.append(lastkey.encode("utf-8"))
-                    o = re.sub(hist,b"",o)
+                        #blog.append(lastkey.encode("utf-8"))
+                        o = lastkey.encode("utf-8") + o
+                        debug.append("after o:" + o.decode("utf-8"))
+                    for h in hist:
+                        o = re.sub(h,b"",o)
                     blog.append(o)
                     log.append(o.decode('utf-8'))
                     continue
