@@ -86,7 +86,9 @@ regpattern = [
     rb"\x08+\x1b\x5b\x31\x34\x50",  #continuous BS
     rb"(\x9b|\x1B\[)[0-?]*[ -/]*[@-~]", #ansi_escape
     rb"\x08*", #history BS
-    rb"\x1b(\x3d|\x3e)"
+    rb"\x1b(\x3d|\x3e)",    # zsh prompt 
+    rb"(\x1b\x5b\x43)+",    # histback
+    rb"(\x1b\x5b\x4b)+",    # ^[[K
 ]
 regex = []
 reps = [
@@ -191,8 +193,9 @@ with open(logdir + "raw.txt",mode='w') as raw:
                     continue
                 if args.timestamp == True:
                     now = "[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] "
-                    o = o.replace(b"\x0d\x0a",b"\x0a" + now.encode("utf-8"))
-                    o = o.replace(b"\x0d",b"\x0a" + now.encode("utf-8"))
+                    o = o.replace(b"\x0d\x0a",b"\x0a")
+                    o = o.replace(b"\x0d",b"\x0a")
+                    o = o.replace(b"\x0a",b"\x0a" + now.encode("utf-8"))
                 else:
                     o = o.replace(b"\x0d\x0a",b"\x0a")
                     o = o.replace(b"\x0d",b"\x0a")
