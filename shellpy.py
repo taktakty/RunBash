@@ -54,7 +54,7 @@ def ChkChar(s):
     return flag
 
 def Chktail(tail):
-    if not re.match(regex[0],tail) or not re.match(reps[0],tail):
+    if not re.match(regex[0],tail) or not re.match(regex_reps[0],tail):
         return True
     else:
         return False
@@ -71,8 +71,8 @@ def DelDispValue(output):
     o = output
     #for reg in regex_read:
     #    o = re.sub(reg,b"",o)
-    for b in reps_disp:
-        o = o.replace(b,b"")
+    for regexd in regex_disp:
+        o = re.sub(regexd,b"",o)
     return o
 
 ## parameters
@@ -86,27 +86,33 @@ regpattern = [
     rb"\x08+\x1b\x5b\x31\x34\x50",  #continuous BS
     rb"(\x9b|\x1B\[)[0-?]*[ -/]*[@-~]", #ansi_escape
     rb"\x08*", #history BS
-    b"\x1b(\x3d|\x3e)"
+    rb"\x1b(\x3d|\x3e)"
 ]
 regex = []
 reps = [
-    b"\x1b\x5b\x3f\x31\x30\x33\x34\x68",    #[?1034h
-    b"\x1b\x5b\x31\x41\x1b\x5b\x31\x4b\x1b\x5b\x4b\x0d",
-    b"\x1b\x5b\x31\x42",
-    b"\x1b\x5b\x4b",
-    b"\x1b\x5b\x30\x6d",
-    b"\x1b\x5b\x39\x31\x6d"
-    b"\x07"
+    rb"\x1b\x5b\x3f\x31\x30\x33\x34\x68",    #[?1034h
+    rb"\x1b\x5b\x31\x41\x1b\x5b\x31\x4b\x1b\x5b\x4b\x0d",
+    rb"\x1b\x5b\x31\x42",
+    rb"\x1b\x5b\x4b",
+    rb"\x1b\x5b\x30\x6d",
+    rb"\x1b\x5b\x39\x31\x6d"
+    rb"\x07"
+    rb"\x0d"
 ]
+regex_reps = []
 reps_disp = [
-    b"\x20\x0d",    # auto CR
+    rb"\x20\x0d",    # auto CR
+    rb"\x1b\x5b\x31\x6d\x1b\x5b\x37\x6d\x25\x1b\x5b\x32\x37\x6d\x1b\x5b\x31\x6d\x1b\x5b\x30\x6d(\x20)+", # zsh prompt %
 ]
+regex_disp = []
 hist = [
     re.compile(rb"(\x08)+"),
     re.compile(rb"\x1b\x5b\x4b"),
     re.compile(rb"\x1b\x5b(\x30|\x31|\x32|\x33|\x34|\x35|\x36|\x37|\x38|\x39)*\x50"),
 ]
 histback = re.compile(rb"\x0d(\x1b\x5b\x43)+")
+crlf = re.compile(rb"\x0d\x0a")
+hlf = re.compile(rb"^(\x0d|\x0a)")
 ## MainProccess
 args = EnOption()
 logdir = MkLogdir()
@@ -118,6 +124,10 @@ if args.timestamp == True:
     blog.append(now.encode("utf-8"))
 for reg in regpattern:
     regex.append(re.compile(reg))
+for rep in reps:
+    regex_reps.append(re.compile(rep))
+for regd in reps_disp:
+    regex_disp.append(re.compile(regd))
 # save original tty setting then set it to raw mode
 old_tty = termios.tcgetattr(sys.stdin)
 tty.setraw(sys.stdin.fileno())
@@ -126,12 +136,16 @@ tty.setraw(sys.stdin.fileno())
 master_fd, slave_fd = pty.openpty()
 
 # use os.setsid() make it run in a new process group, or bash job control will not be enabled
-p = Popen(command,
-          preexec_fn=os.setsid,
-          stdin=slave_fd,
-          stdout=slave_fd,
-          stderr=slave_fd,
-          universal_newlines=True)
+try:
+    p = Popen(command,
+              preexec_fn=os.setsid,
+              stdin=slave_fd,
+              stdout=slave_fd,
+              stderr=slave_fd,
+              universal_newlines=True)
+except:
+    print("error : check if arguments are correct")
+    sys.exit()
 with open(logdir + "raw.txt",mode='w') as raw:
     while p.poll() is None:
         r, w, e = select.select([sys.stdin, master_fd], [], [])
@@ -178,8 +192,10 @@ with open(logdir + "raw.txt",mode='w') as raw:
                 if args.timestamp == True:
                     now = "[" + datetime.datetime.now().strftime("%a %b %d %H:%M:%S.%f %Y") + "] "
                     o = o.replace(b"\x0d\x0a",b"\x0a" + now.encode("utf-8"))
+                    o = o.replace(b"\x0d",b"\x0a" + now.encode("utf-8"))
                 else:
                     o = o.replace(b"\x0d\x0a",b"\x0a")
+                    o = o.replace(b"\x0d",b"\x0a")
                 o = o.replace(b"\x0d",b"\x0a")
                 blog.append(o)
 
