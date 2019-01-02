@@ -154,7 +154,7 @@ with open(logdir + "raw.txt",mode='w') as raw:
         r, w, e = select.select([sys.stdin, master_fd], [], [])
         if sys.stdin in r:
             d = os.read(sys.stdin.fileno(),10000000)
-            debug.append("read value: " + d.decode("utf-8"))
+            #debug.append("read value: " + d.decode("utf-8"))
             os.write(master_fd, d)
         elif master_fd in r:
             o = os.read(master_fd,10000000)
@@ -164,11 +164,11 @@ with open(logdir + "raw.txt",mode='w') as raw:
                 os.write(sys.stdout.fileno(), o)
                 if o == b"\x07":
                     continue
-                debug.append(str(binascii.hexlify(o), 'utf-8'))
-                outputstr = (o.decode('utf-8'))
-                raw.write(outputstr)
-                prechars = list(outputstr)
-                debug.append("".join(prechars))
+                #debug.append(str(binascii.hexlify(o), 'utf-8'))
+                #outputstr = (o.decode('utf-8'))
+                #raw.write(outputstr)
+                #prechars = list(outputstr)
+                #debug.append("".join(prechars))
                 if not re.search(hist[0],o) == None:
                     if o == b'\x08\x1b\x5b\x4b':
                         if len(blog[-1]) == 1:
@@ -176,13 +176,13 @@ with open(logdir + "raw.txt",mode='w') as raw:
                             continue
                     if Chktail(blog[-1]) == True:
                         lastkey = blog.pop()
-                        debug.append("before last key:" + lastkey.decode("utf-8"))
+                        #debug.append("before last key:" + lastkey.decode("utf-8"))
                         num = o.count(b"\x08") * -1
                         DelCtlCode(lastkey)
                         lastkey = lastkey.decode("utf-8")[:num]
-                        debug.append("after last key:" + lastkey)
+                        #debug.append("after last key:" + lastkey)
                         o = lastkey.encode("utf-8") + o
-                        debug.append("after o:" + o.decode("utf-8"))
+                        #debug.append("after o:" + o.decode("utf-8"))
                     for h in hist:
                         o = re.sub(h,b"",o)
                     blog.append(o)
@@ -210,8 +210,8 @@ strblog = blogtxt.decode("utf-8")
 with open(path,mode='w') as b:
     b.write(strblog)
 ## for debug
-with open(logdir + "debug.txt",mode='w') as d:
-    d.write("\n".join(debug))
+#with open(logdir + "debug.txt",mode='w') as d:
+#    d.write("\n".join(debug))
 #with open("/Users/tak/work/logs/binary.txt",mode='w') as b:
 #    b.write("\n".join(binary))
 #restore tty settings back
